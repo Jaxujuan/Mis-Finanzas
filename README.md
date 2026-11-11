@@ -57,8 +57,8 @@ Copia la URL que termina en `/exec`: es tu **URL de API**.
 > La app vive fuera de Google y no puede iniciar sesión con tu cuenta. Por eso la API exige tu clave personal en cada llamada y se bloquea tras varios intentos fallidos. El dashboard web antiguo solo te lo muestra a ti.
 
 ### 5. Activa GitHub Pages
-En este repositorio, ve a **Settings → Pages → Build and deployment**: Source **Deploy from a branch**, rama **main**, carpeta **/ (root)**, y pulsa **Save**.
-En 1–2 minutos la app queda en `https://jaxujuan.github.io/mis-finanzas/`.
+El repositorio debe ser **público** (GitHub Pages gratis no publica repos privados): **Settings → General → Danger Zone → Change visibility → Public**. Luego ve a **Settings → Pages → Build and deployment**: Source **Deploy from a branch**, rama **main**, carpeta **/ (root)**, y pulsa **Save**.
+En 1–2 minutos la app queda en `https://jaxujuan.github.io/Mis-Finanzas/`.
 
 ### 6. Instálala en tu celular
 1. Abre esa dirección en **Chrome**.
