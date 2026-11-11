@@ -123,6 +123,59 @@ function configurarApp() {
   console.log('Pregunta "Fecha del movimiento" en el Form: ' + (opts.hasFecha ? 'sí' : 'NO (todo se guardará con la fecha de hoy)'));
 }
 
+/**
+ * Ejecutar UNA vez: agrega al Form las preguntas opcionales "Descripción" (respuesta corta)
+ * y "Fecha del movimiento" (fecha), justo después de "Medio". No modifica las preguntas existentes.
+ */
+function agregarPreguntasOpcionales() {
+  const form = getLinkedForm_();
+  const fi = findFormItems_(form);
+  const anchorItem = fi.medio || fi.monto;
+  let pos = anchorItem ? anchorItem.getIndex() + 1 : form.getItems().length;
+  if (!fi.descripcion) {
+    const d = form.addTextItem().setTitle('Descripción')
+      .setHelpText('Opcional: lugar o detalle (ej. Plaza Vea, Yape, regalo tío)').setRequired(false);
+    form.moveItem(d.getIndex(), pos);
+    pos++;
+    console.log('Pregunta "Descripción" agregada.');
+  } else {
+    pos = fi.descripcion.getIndex() + 1;
+    console.log('La pregunta "Descripción" ya existía.');
+  }
+  if (!fi.fecha) {
+    const f = form.addDateItem().setTitle('Fecha del movimiento')
+      .setHelpText('Opcional: solo si el movimiento no es de hoy').setRequired(false);
+    form.moveItem(f.getIndex(), pos);
+    console.log('Pregunta "Fecha del movimiento" agregada.');
+  } else {
+    console.log('La pregunta "Fecha del movimiento" ya existía.');
+  }
+  invalidateCache();
+}
+
+/** Prueba la API desde el editor (usa la clave guardada; no la muestra). */
+function probarApi() {
+  const key = getSecret_('APP_KEY');
+  const ping = handleApi_({ action: 'ping', key: key });
+  console.log('ping: ' + JSON.stringify(ping));
+  const opts = handleApi_({ action: 'options', key: key });
+  if (!opts.ok) { console.log('options: ' + opts.error); return; }
+  console.log('Categorías aprendidas por descripción: ' + Object.keys(opts.data.learned.descs).length +
+    ' · palabras: ' + Object.keys(opts.data.learned.words).length +
+    ' · medio habitual: ' + JSON.stringify(opts.data.learned.medioByCat));
+  console.log('OPCIONES ' + JSON.stringify({
+    tipos: opts.data.tipos, medios: opts.data.medios, tiposInternos: opts.data.tiposInternos,
+    categoriasGasto: opts.data.categoriasGasto, categoriasIngreso: opts.data.categoriasIngreso,
+    categoriasInternas: opts.data.categoriasInternas, hasDescripcion: opts.data.hasDescripcion, hasFecha: opts.data.hasFecha
+  }));
+  const data = handleApi_({ action: 'data', key: key, filters: {} });
+  if (!data.ok) { console.log('data: ' + data.error); return; }
+  const d = data.data;
+  console.log(d.meta.periodLabel + ' · ingresos ' + d.kpis.income.value + ' · gastos ' + d.kpis.expenses.value +
+    ' · proyección ' + (d.pace && d.pace.projection) + ' · libre ' + (d.kpis.free && d.kpis.free.value));
+  console.log('Tamaño de la respuesta: ' + Math.round(JSON.stringify(data).length / 1024) + ' KB');
+}
+
 /** Genera una clave nueva (por ejemplo, si perdiste el celular). La anterior deja de funcionar. */
 function regenerarClaveApp() {
   PropertiesService.getScriptProperties().deleteProperty('APP_KEY');

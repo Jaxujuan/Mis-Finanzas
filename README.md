@@ -36,9 +36,9 @@ En el editor de Apps Script de tu Sheet, copia desde la carpeta `apps-script/`:
 Guarda con **Ctrl+S**.
 
 ### 2. Agrega dos preguntas opcionales a tu Google Form
-En la sección de Monto y Medio, con **Obligatoria desactivado**:
-- **Descripción** (Respuesta corta): guarda "Plaza Vea", "Yape" o "regalo tío", y la app **aprende** de esas descripciones para adivinar la categoría.
-- **Fecha del movimiento** (Fecha): permite registrar gastos de días anteriores ("ayer…").
+En el editor, elige **`agregarPreguntasOpcionales`** y pulsa **▷ Ejecutar** (una sola vez). Agrega, después de "Medio" y sin ser obligatorias:
+- **Descripción** (respuesta corta): guarda "Plaza Vea", "Yape" o "regalo tío", y la app **aprende** de esas descripciones para adivinar la categoría.
+- **Fecha del movimiento** (fecha): permite registrar gastos de días anteriores ("ayer…").
 
 ### 3. Crea tu clave personal
 En el editor, elige **`configurarApp`** y pulsa **▷ Ejecutar**. Acepta los permisos: leer tu Form y conectarse a servicios externos.
@@ -57,7 +57,7 @@ Copia la URL que termina en `/exec`: es tu **URL de API**.
 > La app vive fuera de Google y no puede iniciar sesión con tu cuenta. Por eso la API exige tu clave personal en cada llamada y se bloquea tras varios intentos fallidos. El dashboard web antiguo solo te lo muestra a ti.
 
 ### 5. Activa GitHub Pages
-El repositorio debe ser **público** (GitHub Pages gratis no publica repos privados): **Settings → General → Danger Zone → Change visibility → Public**. Luego ve a **Settings → Pages → Build and deployment**: Source **Deploy from a branch**, rama **main**, carpeta **/ (root)**, y pulsa **Save**.
+En este repositorio, ve a **Settings → Pages → Build and deployment**: Source **Deploy from a branch**, rama **main**, carpeta **/ (root)**, y pulsa **Save**.
 En 1–2 minutos la app queda en `https://jaxujuan.github.io/Mis-Finanzas/`.
 
 ### 6. Instálala en tu celular
@@ -76,7 +76,7 @@ Sin IA, la app entiende frases como *"almuerzo 25 con yape"*, *"ayer taxi 12 en 
 3. En Apps Script, ve a **⚙️ Configuración del proyecto → Propiedades del script → Agregar propiedad**:
    - Propiedad: `GEMINI_API_KEY`
    - Valor: la clave
-4. Ejecuta `configurarApp` de nuevo. Debe decir *"IA de respaldo: Gemini (…)"*.
+4. Ejecuta `configurarApp` de nuevo (o `probarApi` para revisar todo). Debe decir *"IA de respaldo: Gemini (…)"*.
 
 Funcionamiento:
 - La IA **solo** se usa cuando las reglas no entienden la categoría o el monto. Lo demás se resuelve en el teléfono.
