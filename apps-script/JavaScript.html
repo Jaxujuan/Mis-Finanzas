@@ -1,0 +1,751 @@
+<script>
+/* =========================================================
+   JavaScript.html
+   Estado, comunicación con Apps Script, filtros, navegación y vistas.
+   Una sola llamada al backend (getDashboardData) alimenta todas las vistas.
+   ========================================================= */
+
+const App = (function () {
+  const $ = function (id) { return document.getElementById(id); };
+  const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const VIEW_TITLES = {
+    resumen: 'Resumen', movimientos: 'Movimientos', presupuesto: 'Presupuesto',
+    fijos: 'Gastos fijos', saldos: 'Saldos y patrimonio', analisis: 'Análisis', ajustes: 'Ajustes'
+  };
+  const AUTO_OPTIONS = [0, 300000, 900000, 3600000, 86400000];
+  const AUTO_DEFAULT = 300000;
+  const AUTO_STORAGE_KEY = 'finanzas.autoRefreshMs';
+
+  const state = {
+    data: null,
+    filters: { year: null, month: null, cuenta: '', grupo: '', tipo: '' },
+    view: 'resumen',
+    dirty: {},
+    requestId: 0,
+    loading: false,
+    firstLoad: true,
+    autoMs: AUTO_DEFAULT,
+    lastLoadAt: 0,
+    table: { search: '', tipo: '', sortKey: 'fecha', sortDir: 'desc', page: 1, pageSize: 15 }
+  };
+
+  /* ------------------------- Backend ------------------------- */
+
+  function load(force) {
+    if (typeof google === 'undefined' || !google.script) {
+      showError('Este dashboard debe abrirse desde la Web App de Apps Script.');
+      return;
+    }
+    const id = ++state.requestId;
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (id !== state.requestId) return; // respuesta vieja: se ignora
+        setLoading(false);
+        if (!res || !res.ok) { showError(res && res.error); return; }
+        onData(res.data, force);
+      })
+      .withFailureHandler(function (err) {
+        if (id !== state.requestId) return;
+        setLoading(false);
+        console.error(err);
+        showError();
+      })
+      .getDashboardData(state.filters, !!force);
+  }
+
+  function onData(data, force) {
+    state.data = data;
+    state.lastLoadAt = Date.now();
+    state.filters = {
+      year: data.filters.year, month: data.filters.month,
+      cuenta: data.filters.cuenta, grupo: data.filters.grupo, tipo: data.filters.tipo
+    };
+    UI.setGroups(data.meta.groups);
+    populateFilters(data.meta);
+    $('periodLabel').textContent = data.meta.periodLabel + activeFilterText();
+    $('lastUpdate').textContent = 'Actualizado: ' + data.meta.loadedAt.replace('T', ' ');
+    updateBadges(data);
+
+    Object.keys(VIEW_TITLES).forEach(function (v) { state.dirty[v] = true; });
+    renderView(state.view);
+
+    if (state.firstLoad) {
+      state.firstLoad = false;
+      const ls = $('loaderScreen');
+      ls.style.opacity = '0';
+      setTimeout(function () { ls.remove(); }, 300);
+    } else if (force) {
+      toast('Datos actualizados');
+    }
+  }
+
+  /* ------------------------- Estado visual ------------------------- */
+
+  function setLoading(on) {
+    state.loading = on;
+    const bar = $('progressBar');
+    $('refreshBtn').classList.toggle('loading', on);
+    if (on) {
+      bar.style.opacity = '1';
+      bar.style.width = '30%';
+      setTimeout(function () { if (state.loading) bar.style.width = '75%'; }, 400);
+    } else {
+      bar.style.width = '100%';
+      setTimeout(function () { bar.style.opacity = '0'; bar.style.width = '0'; }, 300);
+    }
+    if (on && state.firstLoad) {
+      $('kpiGrid').innerHTML = UI.kpiSkeleton(6);
+    }
+  }
+
+  let toastTimer;
+  function toast(msg, isError, action) {
+    const t = $('toast');
+    t.className = 'toast' + (isError ? ' error' : '');
+    t.innerHTML = '<span>' + UI.esc(msg) + '</span>' + (action ? '<button id="toastAction">' + UI.esc(action.label) + '</button>' : '');
+    if (action) $('toastAction').onclick = function () { t.classList.remove('show'); action.fn(); };
+    requestAnimationFrame(function () { t.classList.add('show'); });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('show'); }, isError ? 8000 : 2500);
+  }
+
+  function showError(msg) {
+    const text = msg || 'No se pudieron actualizar los datos. Verifica tu conexión e inténtalo nuevamente.';
+    if (state.firstLoad) {
+      const ls = $('loaderScreen');
+      if (ls) {
+        ls.innerHTML = '<div class="brand-logo">S/</div><div style="max-width:340px;text-align:center">' + UI.esc(text) +
+          '</div><button class="btn btn-primary" onclick="location.reload()">Reintentar</button>';
+      }
+      return;
+    }
+    toast(text, true, { label: 'Reintentar', fn: function () { load(true); } });
+  }
+
+  function updateBadges(d) {
+    const pending = d.fixed.totals.vencidos;
+    const b = $('badgeFijos');
+    b.textContent = pending;
+    b.classList.toggle('hidden', !pending);
+  }
+
+  /* ------------------------- Filtros ------------------------- */
+
+  function option(value, label, selected) {
+    return '<option value="' + UI.esc(value) + '"' + (String(value) === String(selected) ? ' selected' : '') + '>' + UI.esc(label) + '</option>';
+  }
+
+  function populateFilters(meta) {
+    const f = state.filters;
+    $('fYear').innerHTML = meta.years.map(function (y) { return option(y, y, f.year); }).join('');
+    $('fMonth').innerHTML = option(0, 'Todo el año', f.month) +
+      MONTHS.map(function (m, i) { return option(i + 1, m, f.month); }).join('');
+    $('fCuenta').innerHTML = option('', 'Todas las cuentas', f.cuenta) +
+      meta.accounts.map(function (a) { return option(a.key, a.label, f.cuenta); }).join('');
+    $('fGrupo').innerHTML = option('', 'Todos los grupos', f.grupo) +
+      meta.groups.map(function (g) { return option(g, g, f.grupo); }).join('');
+    $('fTipo').innerHTML = option('', 'Todos los tipos', f.tipo) +
+      meta.types.map(function (t) { return option(t.key, t.label, f.tipo); }).join('');
+    $('moreFiltersBtn').classList.toggle('btn-dot', !!(f.cuenta || f.grupo || f.tipo));
+  }
+
+  function activeFilterText() {
+    const f = state.filters;
+    const parts = [];
+    if (f.cuenta) parts.push($('fCuenta').selectedOptions[0].textContent);
+    if (f.grupo) parts.push(f.grupo);
+    if (f.tipo) parts.push($('fTipo').selectedOptions[0].textContent);
+    return parts.length ? ' · Filtrado: ' + parts.join(', ') : '';
+  }
+
+  let filterTimer;
+  function onFilterChange() {
+    state.filters = {
+      year: +$('fYear').value,
+      month: +$('fMonth').value,
+      cuenta: $('fCuenta').value,
+      grupo: $('fGrupo').value,
+      tipo: $('fTipo').value
+    };
+    state.table.page = 1;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(function () { load(false); }, 150);
+  }
+
+  /* ------------------------- Navegación ------------------------- */
+
+  function setView(name) {
+    if (!VIEW_TITLES[name]) return;
+    state.view = name;
+    document.querySelectorAll('.nav-item').forEach(function (b) { b.classList.toggle('active', b.dataset.view === name); });
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.toggle('active', v.id === 'view-' + name); });
+    $('viewTitle').textContent = VIEW_TITLES[name];
+    toggleSidebar(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    renderView(name);
+  }
+
+  function renderView(name) {
+    if (!state.data || !state.dirty[name]) return;
+    state.dirty[name] = false;
+    const fn = { resumen: renderResumen, movimientos: renderMovimientos, presupuesto: renderPresupuesto,
+      fijos: renderFijos, saldos: renderSaldos, analisis: renderAnalisis, ajustes: renderAjustes }[name];
+    try { fn(state.data); } catch (e) { console.error(e); toast('No se pudo mostrar esta sección.', true); }
+    setTimeout(Charts.resizeAll, 50);
+  }
+
+  function toggleSidebar(open) {
+    $('sidebar').classList.toggle('open', open);
+    $('overlay').classList.toggle('open', open);
+  }
+
+  /** Muestra el canvas si hay datos o un estado vacío en su lugar. */
+  function chartOrEmpty(boxId, hasData, title, text) {
+    const box = $(boxId);
+    const canvas = box.querySelector('canvas');
+    let emptyEl = box.querySelector('.empty');
+    canvas.classList.toggle('hidden', !hasData);
+    if (!hasData) {
+      if (!emptyEl) box.insertAdjacentHTML('beforeend', UI.empty(title, text));
+      box.style.height = 'auto';
+    } else {
+      if (emptyEl) emptyEl.remove();
+      box.style.height = '';
+    }
+    return hasData;
+  }
+
+  /* ------------------------- Vista: Resumen ------------------------- */
+
+  function renderResumen(d) {
+    const k = d.kpis;
+    const prev = d.meta.prevLabel;
+    const freeCard = k.free
+      ? UI.kpiCard({
+        cls: 'highlight' + (k.free.value < 0 ? ' negative' : ''),
+        label: 'Libre para el mes',
+        value: UI.money(k.free.value),
+        foot: 'Fijos pendientes ' + UI.money(k.free.pendingFixed) +
+          (k.free.funds > 0 ? ' · fondos ' + UI.money(k.free.funds) : '') +
+          (k.free.estimated ? ' · sueldo estimado' : '')
+      })
+      : UI.kpiCard({ cls: 'highlight', label: 'Patrimonio neto', value: UI.money(k.netWorth.value), foot: 'Activos − pasivos' });
+
+    $('kpiGrid').innerHTML = [
+      UI.kpiCard({ label: 'Ingresos', color: 'var(--income)', value: UI.money(k.income.value), foot: UI.delta(k.income, true) + ' vs ' + UI.esc(prev) }),
+      UI.kpiCard({ label: 'Gastos', color: 'var(--expense)', value: UI.money(k.expenses.value), foot: UI.delta(k.expenses, false) + ' vs ' + UI.esc(prev) }),
+      UI.kpiCard({ label: 'Flujo neto', color: 'var(--net)', value: UI.money(k.net.value, { plus: true }),
+        valueCls: k.net.value < 0 ? 'text-danger' : '', foot: UI.delta(k.net, true) + ' vs ' + UI.esc(prev) }),
+      UI.kpiCard({ label: 'Tasa de ahorro', value: UI.percent(k.savingsRate.value),
+        valueCls: k.savingsRate.value !== null && k.savingsRate.value < 0 ? 'text-danger' : '',
+        foot: k.savingsRate.delta !== null ? UI.delta({ delta: k.savingsRate.delta, deltaPct: null }, true, 'pp') + ' vs ' + UI.esc(prev) : 'Ahorro / ingresos' }),
+      UI.kpiCard({ label: 'Saldo disponible', value: UI.money(k.available.value),
+        foot: 'Banco ' + UI.money(d.balances.current.banco) + ' · Efectivo ' + UI.money(d.balances.current.efectivo) }),
+      freeCard
+    ].join('');
+
+    const hasMonthly = d.monthly.some(function (m) { return m.income || m.expenses; });
+    if (chartOrEmpty('evolutionBox', hasMonthly, 'Aún no hay historial', 'Los meses con movimientos aparecerán aquí.')) {
+      Charts.evolution('chartEvolution', d.monthly);
+    }
+
+    // Alertas
+    const alerts = d.alerts.filter(function (a) { return a.view !== 'ajustes'; });
+    $('alertCount').textContent = alerts.length;
+    $('alertCount').className = 'badge ' + (alerts.some(function (a) { return a.level === 'danger'; }) ? 'danger' : alerts.length ? 'warning' : 'success');
+    $('alertsBox').innerHTML = alerts.length
+      ? '<div class="alert-list">' + alerts.slice(0, 6).map(UI.alertItem).join('') + '</div>'
+      : UI.empty('Todo en orden', 'No hay pagos vencidos ni presupuestos excedidos.', 'check');
+
+    // Gasto por grupo
+    const groups = d.categories.groups;
+    if (!groups.length) {
+      $('spendBox').innerHTML = UI.empty('Sin gastos en este periodo', 'No existen gastos registrados para ' + d.meta.periodLabel + '.');
+    } else {
+      const items = topWithOthers(groups, 6);
+      $('spendBox').innerHTML = '<div class="donut-wrap"><div class="chart-box"><canvas id="chartSpend"></canvas></div>' + UI.legend(items) + '</div>';
+      Charts.doughnut('chartSpend', items);
+    }
+
+    // Presupuesto (top 5 por % usado)
+    const lines = [];
+    d.budget.groups.forEach(function (g) { g.items.forEach(function (it) { lines.push(it); }); });
+    lines.sort(function (a, b) { return (b.pct || 0) - (a.pct || 0); });
+    $('budgetSummaryBox').innerHTML = lines.length
+      ? lines.slice(0, 5).map(function (it) {
+        return UI.budgetRow(it, UI.esc(it.categoria) + (it.fijo ? ' <span class="badge neutral">Fijo</span>' : ''), '', d.budget.monthProgress);
+      }).join('')
+      : UI.empty('Sin presupuesto', 'Agrega montos en la hoja Presupuestos.', 'target');
+
+    // Pagos fijos
+    $('fixedSummaryTitle').textContent = 'Pagos fijos · ' + d.fixed.periodLabel;
+    const fx = d.fixed.items;
+    $('fixedSummaryBox').innerHTML = fx.length
+      ? '<div class="list">' + fx.slice().sort(function (a, b) {
+        const o = { vencido: 0, pendiente: 1, pagado: 2 };
+        return o[a.estado] - o[b.estado] || a.dia - b.dia;
+      }).slice(0, 5).map(fixedListRow).join('') + '</div>'
+      : UI.empty('Sin gastos fijos', 'Agrega tus pagos recurrentes en la hoja Gastos Fijos.', 'calendar');
+
+    // Recientes
+    $('recentBox').innerHTML = d.movements.length
+      ? '<div class="list">' + d.movements.slice(0, 6).map(UI.movementRow).join('') + '</div>'
+      : UI.empty('Sin movimientos', 'No existen movimientos registrados para este periodo.');
+  }
+
+  function topWithOthers(groups, n) {
+    const items = groups.slice(0, n).map(function (g) { return { name: g.name, total: g.total, share: g.share, color: UI.colorFor(g.name) }; });
+    if (groups.length > n) {
+      const rest = groups.slice(n);
+      items.push({
+        name: 'Otros (' + rest.length + ')',
+        total: rest.reduce(function (s, g) { return s + g.total; }, 0),
+        share: rest.reduce(function (s, g) { return s + (g.share || 0); }, 0),
+        color: '#94a3b8'
+      });
+    }
+    return items;
+  }
+
+  function fixedListRow(i) {
+    const iconName = i.estado === 'pagado' ? 'check' : i.estado === 'vencido' ? 'alert' : 'clock';
+    const colorVar = i.estado === 'pagado' ? 'success' : i.estado === 'vencido' ? 'danger' : 'warning';
+    const sub = i.estado === 'pagado' ? 'Pagado el ' + i.pagadoFecha
+      : i.estado === 'vencido' ? 'Vencía el ' + i.vence
+        : i.diasRestantes === null ? 'Vence el ' + i.vence
+          : i.diasRestantes === 0 ? 'Vence hoy' : 'Vence en ' + i.diasRestantes + ' día(s) · ' + i.vence;
+    return '<div class="list-row"><div class="list-icon" style="background:var(--' + colorVar + '-soft);color:var(--' + colorVar + ')">' +
+      UI.icon(iconName).replace('<svg ', '<svg width="17" height="17" ') + '</div>' +
+      '<div class="list-main"><div class="list-title">' + UI.esc(i.concepto) + '</div><div class="list-sub">' + UI.esc(sub) + '</div></div>' +
+      '<div class="list-amount num">' + UI.money(i.monto) + '</div></div>';
+  }
+
+  /* ------------------------- Vista: Movimientos ------------------------- */
+
+  const COLUMNS = [
+    { key: 'fecha', label: 'Fecha' },
+    { key: 'tipoLabel', label: 'Tipo' },
+    { key: 'categoria', label: 'Categoría' },
+    { key: 'grupo', label: 'Grupo' },
+    { key: 'descripcion', label: 'Descripción' },
+    { key: 'medio', label: 'Medio' },
+    { key: 'monto', label: 'Monto', right: true }
+  ];
+
+  function renderMovimientos(d) {
+    const types = {};
+    d.movements.forEach(function (m) { types[m.tipo] = m.tipoLabel; });
+    const t = state.table;
+    $('typeChips').innerHTML = '<button class="chip' + (t.tipo ? '' : ' active') + '" data-chip="">Todos</button>' +
+      Object.keys(types).map(function (k) {
+        return '<button class="chip' + (t.tipo === k ? ' active' : '') + '" data-chip="' + k + '">' + UI.esc(types[k]) + '</button>';
+      }).join('');
+    renderTable();
+  }
+
+  function filteredRows() {
+    const t = state.table;
+    const q = t.search.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let rows = state.data.movements.filter(function (m) {
+      if (t.tipo && m.tipo !== t.tipo) return false;
+      if (!q) return true;
+      const hay = [m.categoria, m.grupo, m.descripcion, m.medio, m.tipoLabel, m.fechaTexto, String(m.monto)]
+        .join(' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return hay.indexOf(q) >= 0;
+    });
+    const dir = t.sortDir === 'asc' ? 1 : -1;
+    rows = rows.slice().sort(function (a, b) {
+      const va = a[t.sortKey], vb = b[t.sortKey];
+      if (typeof va === 'number') return (va - vb) * dir;
+      return String(va || '').localeCompare(String(vb || ''), 'es') * dir;
+    });
+    return rows;
+  }
+
+  function renderTable() {
+    const t = state.table;
+    const rows = filteredRows();
+    if (!rows.length) {
+      $('tableBox').innerHTML = UI.empty(
+        state.data.movements.length ? 'Sin resultados' : 'Sin movimientos',
+        state.data.movements.length ? 'Ningún movimiento coincide con la búsqueda.' : 'No existen movimientos registrados para este periodo.');
+      return;
+    }
+    const pages = Math.max(1, Math.ceil(rows.length / t.pageSize));
+    t.page = Math.min(t.page, pages);
+    const pageRows = rows.slice((t.page - 1) * t.pageSize, t.page * t.pageSize);
+
+    const head = COLUMNS.map(function (c) {
+      const sorted = t.sortKey === c.key;
+      return '<th data-sort="' + c.key + '" class="' + (sorted ? 'sorted ' : '') + (c.right ? 'right' : '') + '">' + c.label +
+        (sorted ? '<span class="arrow">' + (t.sortDir === 'asc' ? '↑' : '↓') + '</span>' : '') + '</th>';
+    }).join('');
+    const body = pageRows.map(function (m) {
+      const sign = m.tipo === 'ingreso' ? '+' : m.tipo === 'gasto' ? '−' : '';
+      const cls = m.tipo === 'ingreso' ? 'amount-in' : m.tipo === 'gasto' ? '' : 'amount-neutral';
+      return '<tr data-mov="' + m.id + '"><td class="num">' + m.fechaTexto + '</td>' +
+        '<td>' + typeBadge(m) + '</td><td>' + UI.esc(m.categoria || '—') + '</td>' +
+        '<td>' + (m.grupo ? '<span class="legend-swatch" style="display:inline-block;margin-right:6px;background:' + UI.colorFor(m.grupo) + '"></span>' + UI.esc(m.grupo)
+          : (m.tipo === 'gasto_trabajo' || m.tipo === 'reembolso') ? '<span class="muted">Trabajo (reembolsable)</span>' : '—') + '</td>' +
+        '<td class="desc">' + UI.esc(m.descripcion || '—') + '</td><td>' + UI.esc(m.medio) + '</td>' +
+        '<td class="right num ' + cls + '" style="font-weight:600">' + sign + UI.money(m.monto) + '</td></tr>';
+    }).join('');
+
+    const total = rows.reduce(function (s, m) {
+      return s + (m.tipo === 'ingreso' ? m.monto : m.tipo === 'gasto' ? -m.monto : 0);
+    }, 0);
+
+    $('tableBox').innerHTML =
+      '<div class="table-wrap"><table class="data"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      '<div class="table-cards list">' + pageRows.map(UI.movementRow).join('') + '</div>' +
+      '<div class="pagination"><span>' + rows.length + ' movimiento(s) · Neto ' + UI.money(total, { plus: true }) +
+      ' · Página ' + t.page + ' de ' + pages + '</span><div class="btns">' +
+      '<button class="btn" data-page="-1"' + (t.page <= 1 ? ' disabled' : '') + '>Anterior</button>' +
+      '<button class="btn" data-page="1"' + (t.page >= pages ? ' disabled' : '') + '>Siguiente</button></div></div>';
+  }
+
+  function typeBadge(m) {
+    const cls = { ingreso: 'success', gasto: 'danger', retiro: 'info', deposito: 'info', gasto_trabajo: 'warning', reembolso: 'warning' }[m.tipo] || 'neutral';
+    return '<span class="badge ' + cls + '">' + UI.esc(m.tipoLabel) + '</span>';
+  }
+
+  function openMovement(id) {
+    const all = state.data.movements.concat(state.data.topExpenses);
+    const m = all.filter(function (x) { return String(x.id) === String(id); })[0];
+    if (!m) return;
+    const row = function (l, v) { return UI.statRow(l, UI.esc(v || '—')); };
+    $('modalContent').innerHTML =
+      '<div class="modal-head"><div>' + typeBadge(m) + '<div class="modal-amount num" style="margin-top:8px">' + UI.money(m.monto) + '</div></div>' +
+      '<button class="btn btn-icon" data-close aria-label="Cerrar">' + UI.icon('x') + '</button></div>' +
+      row('Fecha', m.fecha.replace('T', ' ')) + row('Categoría', m.categoria) + row('Grupo', m.grupo) +
+      row('Medio', m.medio) + row('Cuenta', m.cuentaLabel) + row('Descripción', m.descripcion) +
+      row('Periodo contable', m.period) + row('Fila en el Sheet', String(m.id)) +
+      (m.excluded ? '<p class="muted" style="font-size:12px">No cuenta como ingreso ni gasto (movimiento interno).</p>' : '');
+    $('modal').classList.add('open');
+  }
+
+  /* ------------------------- Vista: Presupuesto ------------------------- */
+
+  function renderPresupuesto(d) {
+    const b = d.budget;
+    const t = b.totals;
+    $('budgetKpis').innerHTML = [
+      UI.kpiCard({ label: 'Presupuestado', value: UI.money(t.presupuesto), foot: b.months > 1 ? b.months + ' meses' : 'Variables + fijos' }),
+      UI.kpiCard({ label: 'Gastado', value: UI.money(t.gastado),
+        foot: t.sinPresupuesto > 0
+          ? 'Presupuestado · <span class="text-warning">+ ' + UI.money(t.sinPresupuesto) + ' sin presupuesto</span>'
+          : 'En categorías presupuestadas' }),
+      UI.kpiCard({ label: 'Disponible', value: UI.money(t.disponible), valueCls: t.disponible < 0 ? 'text-danger' : 'text-success', foot: t.disponible < 0 ? 'Te pasaste del total' : 'Aún puedes gastar' }),
+      UI.kpiCard({ label: '% utilizado', value: UI.percent(t.pct, 0), foot: UI.badge(t.estado) + (b.monthProgress !== null ? ' Mes al ' + UI.percent(b.monthProgress, 0) : '') })
+    ].join('');
+
+    if (!b.groups.length) {
+      $('budgetGroupsBox').innerHTML = UI.empty('Sin presupuesto', 'Agrega montos en la hoja Presupuestos o Gastos Fijos.', 'target');
+      chartOrEmpty('budgetChartBox', false, 'Sin datos', '');
+    } else {
+      $('budgetHint').textContent = 'Toca un grupo para ver sus categorías' + (b.monthProgress !== null ? ' · la línea marca el avance del mes' : '');
+      $('budgetGroupsBox').innerHTML = b.groups.map(function (g, idx) {
+        const color = UI.colorFor(g.grupo);
+        const name = UI.icon('chevron', 'chev') + '<span class="legend-swatch" style="background:' + color + '"></span>' + UI.esc(g.grupo);
+        return '<div class="group-block' + (idx === 0 ? ' open' : '') + '"><button class="group-head" data-toggle>' +
+          UI.budgetRow(g, name, ' · ' + g.items.length + ' categoría(s)' +
+            (g.sinPresupuesto > 0 ? ' · <span class="text-warning">+ ' + UI.money(g.sinPresupuesto) + ' sin presupuesto</span>' : ''),
+            b.monthProgress).replace('class="budget-row"', 'class="budget-row" style="padding:0;border:0"') +
+          '</button><div class="group-body">' + g.items.map(function (it) {
+            return UI.budgetRow(it, UI.esc(it.categoria) + (it.fijo ? ' <span class="badge neutral">Fijo</span>' : '') +
+              (it.ritmoAlto ? ' <span class="badge warning">Ritmo alto</span>' : ''), '', b.monthProgress);
+          }).join('') + g.sinPresupuestoItems.map(function (u) {
+            return '<div class="budget-row"><div class="budget-top" style="margin:0"><div class="budget-name">' + UI.esc(u.categoria) +
+              ' <span class="badge warning">Sin presupuesto</span></div><div class="budget-amounts num">' + UI.money(u.gastado) + '</div></div></div>';
+          }).join('') + '</div></div>';
+      }).join('');
+      if (chartOrEmpty('budgetChartBox', true)) {
+        $('budgetChartBox').style.height = Math.max(220, b.groups.length * 40 + 70) + 'px';
+        Charts.budget('chartBudget', b.groups);
+      }
+    }
+
+    renderPeriodic(b.periodic);
+
+    $('unbudgetedBox').innerHTML = b.unbudgeted.length
+      ? '<div class="list">' + b.unbudgeted.map(function (u) {
+        const color = UI.colorFor(u.grupo);
+        return '<div class="list-row"><div class="list-icon" style="background:' + color + '1f;color:' + color + '">' + UI.initials(u.categoria) + '</div>' +
+          '<div class="list-main"><div class="list-title">' + UI.esc(u.categoria) + '</div><div class="list-sub">' + UI.esc(u.grupo) + '</div></div>' +
+          '<div class="list-amount num">' + UI.money(u.gastado) + '</div></div>';
+      }).join('') + '</div>'
+      : UI.empty('Todo presupuestado', 'Todos tus gastos del periodo tienen presupuesto.', 'check');
+  }
+
+  /** Fondos de compras periódicas (presupuestos con "Cada (meses)" mayor a 1). */
+  function renderPeriodic(list) {
+    $('periodicCard').classList.toggle('hidden', !list.length);
+    if (!list.length) return;
+    $('periodicBox').innerHTML = list.map(function (x) {
+      const name = UI.esc(x.categoria) + ' <span class="badge neutral">cada ' + String(x.meses).replace('.', ',') + ' meses</span>' +
+        (x.compradoEnPeriodo ? ' <span class="badge success">Comprado este periodo</span>' : '');
+      const when = x.proximaCompra
+        ? 'Última compra ' + x.ultimaCompra + ' · próxima ~' + x.proximaLabel +
+          (x.diasParaProxima >= 0 ? ' (en ' + x.diasParaProxima + ' días)' : ' (ya toca reponer)')
+        : 'Sin compras registradas aún';
+      return '<div class="budget-row">' +
+        '<div class="budget-top"><div class="budget-name">' + name + '</div>' +
+        '<div class="budget-amounts num">' + UI.money(x.acumulado) + ' / ' + UI.money(x.costo) + '</div></div>' +
+        UI.progressBar(x.pct, x.estado === 'ok' ? '' : x.estado) +
+        '<div class="budget-bottom"><span>' + UI.esc(when) + '</span><span>Aparta ' + UI.money(x.mensual) + ' al mes</span></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ------------------------- Vista: Gastos fijos ------------------------- */
+
+  function renderFijos(d) {
+    const f = d.fixed;
+    $('fixedKpis').innerHTML = [
+      UI.kpiCard({ label: 'Total mensual', value: UI.money(f.totals.total), foot: f.items.length + ' pago(s) · ' + UI.esc(f.periodLabel) }),
+      UI.kpiCard({ label: 'Pagado', color: 'var(--success)', value: UI.money(f.totals.pagado), foot: f.items.filter(function (i) { return i.estado === 'pagado'; }).length + ' registrado(s)' }),
+      UI.kpiCard({ label: 'Pendiente', color: 'var(--warning)', value: UI.money(f.totals.pendiente), foot: 'Por pagar este mes' }),
+      UI.kpiCard({ label: 'Sin registrar', color: 'var(--danger)', value: String(f.totals.vencidos), valueCls: f.totals.vencidos ? 'text-danger' : '', foot: 'Pasaron su fecha de pago' })
+    ].join('');
+
+    $('fixedGrid').innerHTML = f.items.length ? f.items.map(function (i) {
+      const when = i.estado === 'pagado'
+        ? 'Pagado el ' + i.pagadoFecha + (Math.abs(i.pagadoMonto - i.monto) > 0.01 ? ' · ' + UI.money(i.pagadoMonto) : '')
+        : i.estado === 'vencido' ? 'Vencía el ' + i.vence
+          : i.diasRestantes === null ? 'Vence el ' + i.vence
+            : i.diasRestantes === 0 ? 'Vence hoy (' + i.vence + ')' : 'Vence en ' + i.diasRestantes + ' día(s) · ' + i.vence;
+      return '<div class="card fixed-card ' + i.estado + '"><div class="card-head" style="margin-bottom:0">' +
+        '<div><div class="card-title">' + UI.esc(i.concepto) + '</div><div class="card-sub">' + UI.esc(i.categoria) + ' · día ' + i.dia + '</div></div>' +
+        UI.badge(i.estado) + '</div><div class="fixed-amount num">' + UI.money(i.monto) + '</div>' +
+        '<div class="card-sub">' + UI.esc(when) + '</div>' +
+        (i.nota ? '<div class="fixed-note">' + UI.esc(i.nota) + '</div>' : '') + '</div>';
+    }).join('') : '<div class="card" style="grid-column:1/-1">' + UI.empty('Sin gastos fijos', 'Agrega tus pagos recurrentes en la hoja Gastos Fijos.', 'calendar') + '</div>';
+  }
+
+  /* ------------------------- Vista: Saldos ------------------------- */
+
+  function renderSaldos(d) {
+    const c = d.balances.current;
+    $('balanceKpis').innerHTML = [
+      UI.kpiCard({ label: 'Banco', color: '#6366f1', value: UI.money(c.banco), valueCls: c.banco < 0 ? 'text-danger' : '', foot: 'Incluye Yape / Plin' }),
+      UI.kpiCard({ label: 'Efectivo', color: '#f59e0b', value: UI.money(c.efectivo), valueCls: c.efectivo < 0 ? 'text-danger' : '', foot: 'Dinero en mano' }),
+      UI.kpiCard({ label: 'Por cobrar al trabajo', color: 'var(--info)', value: UI.money(c.porCobrar), foot: 'Gastos del trabajo − reembolsos' }),
+      UI.kpiCard({ cls: 'highlight', label: 'Patrimonio neto', value: UI.money(c.patrimonio), foot: 'Activos − pasivos' })
+    ].join('');
+
+    const h = d.balances.history;
+    if (chartOrEmpty('balanceChartBox', h.length > 0, 'Sin historial', '')) Charts.balance('chartBalance', h);
+
+    $('netWorthBox').innerHTML =
+      '<div class="card-sub" style="margin-bottom:6px">ACTIVOS</div>' +
+      UI.statRow('Banco', UI.money(c.banco)) + UI.statRow('Efectivo', UI.money(c.efectivo)) +
+      UI.statRow('Por cobrar', UI.money(Math.max(0, c.porCobrar))) + UI.statRow('Total activos', UI.money(c.activos), 'total') +
+      '<div class="card-sub" style="margin:16px 0 6px">PASIVOS</div>' +
+      UI.statRow('Tarjeta de crédito', UI.money(c.pasivos)) +
+      '<div style="margin-top:18px;padding:14px;border-radius:10px;background:var(--primary-soft)">' +
+      UI.statRow('<b>Patrimonio neto</b>', '<b>' + UI.money(c.patrimonio) + '</b>') + '</div>' +
+      (c.banco < 0 || c.efectivo < 0
+        ? '<p class="text-warning" style="font-size:12px;margin-top:12px">Un saldo negativo suele indicar un movimiento sin registrar o un saldo inicial faltante en la hoja Configuracion.</p>'
+        : '');
+  }
+
+  /* ------------------------- Vista: Análisis ------------------------- */
+
+  function renderAnalisis(d) {
+    const groups = d.categories.groups;
+    $('analysisCompareLabel').textContent = d.meta.periodLabel + ' vs ' + d.meta.prevLabel +
+      ' · Promedio diario ' + UI.money(d.kpis.dailyAverage.value);
+    if (chartOrEmpty('groupChartBox', groups.length > 0, 'Sin gastos', 'No existen gastos para este periodo.')) {
+      $('groupChartBox').style.height = Math.max(240, groups.length * 44 + 60) + 'px';
+      Charts.groups('chartGroups', groups, d.meta.prevLabel);
+    }
+
+    $('accountsBox').innerHTML = d.accounts.length
+      ? d.accounts.map(function (a) {
+        return '<div class="budget-row"><div class="budget-top"><div class="budget-name">' + UI.esc(a.name) + '</div>' +
+          '<div class="budget-amounts num">' + UI.money(a.total) + '</div></div>' +
+          '<div class="bar"><div class="bar-fill" style="width:' + (a.share || 0) + '%;background:var(--primary)"></div></div>' +
+          '<div class="budget-bottom"><span>' + UI.percent(a.share, 0) + ' del gasto</span></div></div>';
+      }).join('')
+      : UI.empty('Sin gastos', '');
+
+    $('categoryTreeBox').innerHTML = groups.length ? groups.map(function (g, idx) {
+      const color = UI.colorFor(g.name);
+      const deltaHtml = g.deltaPct === null
+        ? '<span class="delta neutral">nuevo</span>'
+        : UI.delta({ deltaPct: g.deltaPct }, false);
+      return '<div class="group-block' + (idx === 0 ? ' open' : '') + '"><button class="group-head" data-toggle>' +
+        '<div class="budget-top" style="margin:0"><div class="budget-name">' + UI.icon('chevron', 'chev') +
+        '<span class="legend-swatch" style="background:' + color + '"></span>' + UI.esc(g.name) +
+        ' <span class="muted" style="font-weight:400">· ' + UI.percent(g.share, 0) + '</span></div>' +
+        '<div class="budget-amounts num" style="display:flex;gap:8px;align-items:center">' + deltaHtml +
+        '<b style="color:var(--text)">' + UI.money(g.total) + '</b></div></div></button>' +
+        '<div class="group-body">' + g.children.map(function (c) {
+          return '<div class="budget-row"><div class="budget-top"><div class="budget-name" style="font-weight:500">' + UI.esc(c.name) +
+            ' <span class="muted" style="font-weight:400;font-size:12px">' + c.count + ' mov.</span></div>' +
+            '<div class="budget-amounts num">' + UI.money(c.total) + '</div></div>' +
+            '<div class="bar"><div class="bar-fill" style="width:' + (c.share || 0) + '%;background:' + color + '"></div></div></div>';
+        }).join('') + '</div></div>';
+    }).join('') : UI.empty('Sin gastos', 'No existen gastos para este periodo.');
+
+    $('topBox').innerHTML = d.topExpenses.length
+      ? '<div class="list">' + d.topExpenses.map(UI.movementRow).join('') + '</div>'
+      : UI.empty('Sin gastos', '');
+  }
+
+  /* ------------------------- Vista: Ajustes ------------------------- */
+
+  function renderAjustes(d) {
+    const s = d.meta.settings;
+    $('settingsBox').innerHTML =
+      UI.statRow('Hoja de movimientos', UI.esc(d.meta.sheetName)) +
+      UI.statRow('Saldo inicial Banco', UI.money(s.saldoInicialBanco)) +
+      UI.statRow('Saldo inicial Efectivo', UI.money(s.saldoInicialEfectivo)) +
+      UI.statRow('Sueldo esperado', s.sueldoEsperado ? UI.money(s.sueldoEsperado) : 'No definido') +
+      UI.statRow('Sueldo cuenta para el mes siguiente desde el día', s.diaSueldoMesSiguiente) +
+      UI.statRow('Umbral de advertencia', s.umbralAdvertencia + '%') +
+      UI.statRow('Umbral de excedido', s.umbralExcedido + '%') +
+      UI.statRow('Tolerancia de gastos fijos', '±' + Math.round(s.toleranciaFijos * 100) + '%') +
+      '<p class="muted" style="font-size:12px;margin-top:12px">Para cambiar estos valores edita la hoja Configuracion (columnas Clave | Valor).</p>';
+
+    const w = d.meta.warnings;
+    $('dataQualityBox').innerHTML =
+      UI.statRow('Movimientos válidos', d.meta.totalMovements) +
+      UI.statRow('Datos leídos del Sheet', d.meta.loadedAt.replace('T', ' ')) +
+      UI.statRow('Origen de esta vista', d.meta.fromCache ? 'Caché (rápido)' : 'Lectura directa') +
+      (w.length
+        ? '<div class="alert-list" style="margin-top:12px">' + w.map(function (x) {
+          return UI.alertItem({ level: 'warning', view: 'ajustes', title: 'Revisar', detail: x });
+        }).join('') + '</div>'
+        : '<div style="margin-top:12px">' + UI.empty('Datos en orden', 'No se detectaron problemas.', 'check') + '</div>');
+    renderAutoInfo();
+  }
+
+  /* ------------------------- Eventos ------------------------- */
+
+  /* ------------------------- Actualización automática ------------------------- */
+
+  let autoTimer;
+
+  /** Lee la preferencia guardada en este navegador (si el almacenamiento falla, usa 5 min). */
+  function loadAutoPreference() {
+    try {
+      const saved = parseInt(localStorage.getItem(AUTO_STORAGE_KEY), 10);
+      if (AUTO_OPTIONS.indexOf(saved) >= 0) return saved;
+    } catch (e) { /* almacenamiento no disponible */ }
+    return AUTO_DEFAULT;
+  }
+
+  function saveAutoPreference(ms) {
+    try { localStorage.setItem(AUTO_STORAGE_KEY, String(ms)); } catch (e) { /* sin persistencia */ }
+  }
+
+  function autoLabel(ms) {
+    return { 0: 'desactivada', 300000: 'cada 5 minutos', 900000: 'cada 15 minutos',
+      3600000: 'cada 1 hora', 86400000: 'cada 24 horas' }[ms];
+  }
+
+  /** Revisa cada minuto si ya toca actualizar; así el intervalo se respeta aunque la pestaña haya estado oculta. */
+  function scheduleAutoRefresh() {
+    clearInterval(autoTimer);
+    if (state.autoMs) autoTimer = setInterval(autoTick, 60 * 1000);
+  }
+
+  function autoTick() {
+    if (!state.autoMs || state.loading || !state.lastLoadAt || document.visibilityState !== 'visible') return;
+    if (Date.now() - state.lastLoadAt >= state.autoMs) load(false);
+  }
+
+  function setAutoRefresh(ms) {
+    state.autoMs = ms;
+    $('fAuto').value = String(ms);
+    saveAutoPreference(ms);
+    scheduleAutoRefresh();
+    renderAutoInfo();
+  }
+
+  function renderAutoInfo() {
+    const box = $('autoInfoBox');
+    if (!box) return;
+    box.innerHTML = UI.statRow('Frecuencia actual', state.autoMs ? autoLabel(state.autoMs) : 'Desactivada') +
+      '<p class="muted" style="font-size:12px;margin-top:10px">Cámbiala con el selector de la barra superior. ' +
+      'Solo se actualiza mientras el dashboard está abierto y visible; al volver a la pestaña se actualiza si ya pasó el intervalo.</p>';
+  }
+
+  function bindEvents() {
+    $('nav').addEventListener('click', function (e) {
+      const b = e.target.closest('.nav-item');
+      if (b) setView(b.dataset.view);
+    });
+    document.addEventListener('click', function (e) {
+      const go = e.target.closest('[data-goto]');
+      if (go) { setView(go.dataset.goto); return; }
+      const tg = e.target.closest('[data-toggle]');
+      if (tg) { tg.parentElement.classList.toggle('open'); return; }
+      const mov = e.target.closest('[data-mov]');
+      if (mov) { openMovement(mov.dataset.mov); return; }
+      if (e.target.closest('[data-close]') || e.target === $('modal')) $('modal').classList.remove('open');
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { $('modal').classList.remove('open'); toggleSidebar(false); }
+    });
+
+    ['fYear', 'fMonth', 'fCuenta', 'fGrupo', 'fTipo'].forEach(function (id) {
+      $(id).addEventListener('change', onFilterChange);
+    });
+    $('clearFiltersBtn').addEventListener('click', function () {
+      $('fCuenta').value = ''; $('fGrupo').value = ''; $('fTipo').value = '';
+      onFilterChange();
+    });
+    $('moreFiltersBtn').addEventListener('click', function () { $('filterPanel').classList.toggle('open'); });
+    $('refreshBtn').addEventListener('click', function () { load(true); });
+    $('menuBtn').addEventListener('click', function () { toggleSidebar(true); });
+    $('overlay').addEventListener('click', function () { toggleSidebar(false); });
+
+    // Tabla
+    let searchTimer;
+    $('tableSearch').addEventListener('input', function (e) {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { state.table.search = e.target.value; state.table.page = 1; renderTable(); }, 180);
+    });
+    $('typeChips').addEventListener('click', function (e) {
+      const c = e.target.closest('[data-chip]');
+      if (!c) return;
+      state.table.tipo = c.dataset.chip; state.table.page = 1;
+      document.querySelectorAll('#typeChips .chip').forEach(function (x) { x.classList.toggle('active', x === c); });
+      renderTable();
+    });
+    $('tableBox').addEventListener('click', function (e) {
+      const th = e.target.closest('[data-sort]');
+      if (th) {
+        const t = state.table;
+        if (t.sortKey === th.dataset.sort) t.sortDir = t.sortDir === 'asc' ? 'desc' : 'asc';
+        else { t.sortKey = th.dataset.sort; t.sortDir = th.dataset.sort === 'monto' || th.dataset.sort === 'fecha' ? 'desc' : 'asc'; }
+        renderTable();
+        return;
+      }
+      const pg = e.target.closest('[data-page]');
+      if (pg && !pg.disabled) { state.table.page += +pg.dataset.page; renderTable(); }
+    });
+
+    $('fAuto').addEventListener('change', function (e) {
+      setAutoRefresh(parseInt(e.target.value, 10));
+      toast('Actualización automática ' + autoLabel(state.autoMs));
+    });
+    document.addEventListener('visibilitychange', autoTick);
+  }
+
+  function init() {
+    UI.hydrateIcons();
+    bindEvents();
+    setAutoRefresh(loadAutoPreference());
+    load(false);
+  }
+
+  return { init: init, load: load, setView: setView };
+})();
+
+document.addEventListener('DOMContentLoaded', App.init);
+</script>

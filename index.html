@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mis Finanzas</title>
+  <meta name="description" content="Tus finanzas personales: registra gastos con tu voz y mira cómo vas en el mes.">
+  <meta name="theme-color" content="#ea580c" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#140d09" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finanzas">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <!-- Pantalla de conexión (primer uso) -->
+  <section class="setup hidden" id="setup">
+    <div class="setup-card">
+      <div class="logo">S/</div>
+      <h1>Mis Finanzas</h1>
+      <p class="muted">Conecta la app con tu Google Sheets. Solo lo haces una vez en este dispositivo.</p>
+      <label class="field">
+        <span>URL de tu API (Apps Script)</span>
+        <input id="setupUrl" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+      </label>
+      <label class="field">
+        <span>Clave personal</span>
+        <input id="setupKey" type="password" placeholder="La que te dio configurarApp()" autocomplete="off">
+      </label>
+      <p class="form-error hidden" id="setupError"></p>
+      <button class="btn btn-primary btn-block" id="setupBtn">Conectar</button>
+      <button class="btn btn-ghost btn-block" id="demoBtn">Ver con datos de ejemplo</button>
+    </div>
+  </section>
+
+  <div class="app hidden" id="app">
+    <!-- Barra superior -->
+    <header class="topbar">
+      <div class="topbar-row">
+        <button class="icon-btn" id="prevMonth" aria-label="Mes anterior" data-icon="chevronLeft"></button>
+        <button class="period-btn" id="periodBtn" aria-label="Elegir periodo">
+          <span id="periodLabel">—</span>
+        </button>
+        <button class="icon-btn" id="nextMonth" aria-label="Mes siguiente" data-icon="chevronRight"></button>
+        <span class="spacer"></span>
+        <span class="sync" id="syncState" title="Estado de sincronización"></span>
+        <button class="icon-btn" id="refreshBtn" aria-label="Actualizar" data-icon="refresh"></button>
+      </div>
+      <div class="demo-banner hidden" id="demoBanner">Modo ejemplo · datos ficticios <button id="exitDemo">Conectar mis datos</button></div>
+    </header>
+
+    <main class="content" id="content">
+      <section class="view active" id="view-inicio"></section>
+      <section class="view" id="view-movimientos"></section>
+      <section class="view" id="view-presupuesto"></section>
+      <section class="view" id="view-mas"></section>
+    </main>
+
+    <!-- Navegación inferior -->
+    <nav class="tabbar" id="tabbar">
+      <button class="tab active" data-view="inicio"><span data-icon="home"></span><b>Inicio</b></button>
+      <button class="tab" data-view="movimientos"><span data-icon="list"></span><b>Movimientos</b></button>
+      <button class="mic-fab" id="micFab" aria-label="Registrar con voz"><span data-icon="mic"></span></button>
+      <button class="tab" data-view="presupuesto"><span data-icon="target"></span><b>Presupuesto</b></button>
+      <button class="tab" data-view="mas"><span data-icon="grid"></span><b>Más</b></button>
+    </nav>
+  </div>
+
+  <!-- Hoja inferior genérica (voz, detalle, selector de mes) -->
+  <div class="sheet-backdrop" id="sheetBackdrop"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-grip"></div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" defer></script>
+  <script src="js/ui.js" defer></script>
+  <script src="js/api.js" defer></script>
+  <script src="js/charts.js" defer></script>
+  <script src="js/views.js" defer></script>
+  <script src="js/parser.js" defer></script>
+  <script src="js/entry.js" defer></script>
+  <script src="js/app.js" defer></script>
+</body>
+</html>

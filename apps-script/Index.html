@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mis Finanzas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <!-- Pantalla de carga inicial -->
+  <div class="loader-screen" id="loaderScreen">
+    <div class="brand-logo">S/</div>
+    <div class="muted">Cargando información financiera...</div>
+    <div class="track"><div></div></div>
+  </div>
+
+  <div class="progress-bar" id="progressBar"></div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">S/</div>
+        <div>
+          <div class="brand-name">Mis Finanzas</div>
+          <div class="brand-sub">Panel personal</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-view="resumen" data-icon="home">Resumen</button>
+        <button class="nav-item" data-view="movimientos" data-icon="list">Movimientos</button>
+        <button class="nav-item" data-view="presupuesto" data-icon="target">Presupuesto</button>
+        <button class="nav-item" data-view="fijos" data-icon="calendar">Gastos fijos <span class="nav-badge hidden" id="badgeFijos"></span></button>
+        <button class="nav-item" data-view="saldos" data-icon="wallet">Saldos</button>
+        <button class="nav-item" data-view="analisis" data-icon="pie">Análisis</button>
+        <button class="nav-item" data-view="ajustes" data-icon="settings">Ajustes</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="lastUpdate">—</div>
+      </div>
+    </aside>
+    <div class="overlay" id="overlay"></div>
+
+    <div class="main">
+      <!-- Barra superior con filtros globales -->
+      <header class="topbar">
+        <button class="btn btn-icon menu-btn" id="menuBtn" aria-label="Abrir menú" data-icon="menu"></button>
+        <div class="topbar-title">
+          <h1 id="viewTitle">Resumen</h1>
+          <div class="period" id="periodLabel">—</div>
+        </div>
+        <div class="filters">
+          <select class="select" id="fYear" aria-label="Año"></select>
+          <select class="select" id="fMonth" aria-label="Mes"></select>
+          <button class="btn btn-icon" id="moreFiltersBtn" aria-label="Más filtros" data-icon="filter"></button>
+          <select class="select select-auto" id="fAuto" aria-label="Actualización automática" title="Actualización automática">
+            <option value="0">Auto: desactivado</option>
+            <option value="300000">Auto: cada 5 min</option>
+            <option value="900000">Auto: cada 15 min</option>
+            <option value="3600000">Auto: cada 1 hora</option>
+            <option value="86400000">Auto: cada 24 horas</option>
+          </select>
+          <button class="btn btn-primary" id="refreshBtn" data-icon="refresh"><span class="btn-label">Actualizar datos</span></button>
+        </div>
+        <div class="filter-panel" id="filterPanel">
+          <select class="select" id="fCuenta" aria-label="Cuenta"></select>
+          <select class="select" id="fGrupo" aria-label="Grupo"></select>
+          <select class="select" id="fTipo" aria-label="Tipo"></select>
+          <button class="btn" id="clearFiltersBtn">Limpiar filtros</button>
+        </div>
+      </header>
+
+      <main class="content" id="content">
+        <!-- ============ RESUMEN ============ -->
+        <section class="view active" id="view-resumen">
+          <div class="grid kpi-grid" id="kpiGrid"></div>
+          <div class="grid grid-2-1">
+            <div class="card">
+              <div class="card-head">
+                <div><h3 class="card-title">Evolución financiera</h3><div class="card-sub">Ingresos, gastos y ahorro · últimos 12 meses</div></div>
+              </div>
+              <div class="chart-box" id="evolutionBox"><canvas id="chartEvolution"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Requiere tu atención</h3><span class="badge neutral" id="alertCount">0</span></div>
+              <div id="alertsBox"></div>
+            </div>
+          </div>
+          <div class="grid grid-1-1">
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">¿En qué gasto?</h3><button class="link-btn" data-goto="analisis">Ver análisis</button></div>
+              <div id="spendBox"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Presupuesto del periodo</h3><button class="link-btn" data-goto="presupuesto">Ver todo</button></div>
+              <div id="budgetSummaryBox"></div>
+            </div>
+          </div>
+          <div class="grid grid-1-1">
+            <div class="card">
+              <div class="card-head"><h3 class="card-title" id="fixedSummaryTitle">Pagos fijos</h3><button class="link-btn" data-goto="fijos">Ver todos</button></div>
+              <div id="fixedSummaryBox"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Últimos movimientos</h3><button class="link-btn" data-goto="movimientos">Ver todos</button></div>
+              <div id="recentBox"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ MOVIMIENTOS ============ -->
+        <section class="view" id="view-movimientos">
+          <div class="card">
+            <div class="table-toolbar">
+              <div class="search"><span data-icon="search"></span><input class="input" id="tableSearch" type="search" placeholder="Buscar categoría, descripción, medio..."></div>
+              <div class="chips" id="typeChips"></div>
+            </div>
+            <div id="tableBox"></div>
+          </div>
+        </section>
+
+        <!-- ============ PRESUPUESTO ============ -->
+        <section class="view" id="view-presupuesto">
+          <div class="grid kpi-grid four" id="budgetKpis"></div>
+          <div class="grid grid-2-1">
+            <div>
+              <div class="card" style="margin-bottom:16px">
+                <div class="card-head"><div><h3 class="card-title">Por grupo y categoría</h3><div class="card-sub" id="budgetHint">Toca un grupo para ver sus categorías</div></div></div>
+                <div id="budgetGroupsBox"></div>
+              </div>
+              <div class="card hidden" id="periodicCard">
+                <div class="card-head"><div><h3 class="card-title">Compras periódicas</h3><div class="card-sub">Fondo que vas apartando hasta la próxima compra</div></div></div>
+                <div id="periodicBox"></div>
+              </div>
+            </div>
+            <div>
+              <div class="card" style="margin-bottom:16px">
+                <div class="card-head"><h3 class="card-title">Presupuesto vs. gasto</h3></div>
+                <div class="chart-box" id="budgetChartBox"><canvas id="chartBudget"></canvas></div>
+              </div>
+              <div class="card">
+                <div class="card-head"><div><h3 class="card-title">Gastos sin presupuesto</h3><div class="card-sub">Categorías con gasto pero sin monto asignado</div></div></div>
+                <div id="unbudgetedBox"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ GASTOS FIJOS ============ -->
+        <section class="view" id="view-fijos">
+          <div class="grid kpi-grid four" id="fixedKpis"></div>
+          <div class="fixed-grid" id="fixedGrid"></div>
+        </section>
+
+        <!-- ============ SALDOS ============ -->
+        <section class="view" id="view-saldos">
+          <div class="grid kpi-grid four" id="balanceKpis"></div>
+          <div class="grid grid-2-1">
+            <div class="card">
+              <div class="card-head"><div><h3 class="card-title">Evolución de saldos</h3><div class="card-sub">Saldo al cierre de cada mes</div></div></div>
+              <div class="chart-box tall" id="balanceChartBox"><canvas id="chartBalance"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Composición del patrimonio</h3></div>
+              <div id="netWorthBox"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ ANÁLISIS ============ -->
+        <section class="view" id="view-analisis">
+          <div class="grid grid-2-1">
+            <div class="card">
+              <div class="card-head"><div><h3 class="card-title">Gastos por grupo</h3><div class="card-sub" id="analysisCompareLabel"></div></div></div>
+              <div class="chart-box tall" id="groupChartBox"><canvas id="chartGroups"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Gasto por medio</h3></div>
+              <div id="accountsBox"></div>
+            </div>
+          </div>
+          <div class="grid grid-2-1">
+            <div class="card">
+              <div class="card-head"><div><h3 class="card-title">Detalle por categoría</h3><div class="card-sub">Variación frente al periodo anterior</div></div></div>
+              <div id="categoryTreeBox"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Gastos más altos</h3></div>
+              <div id="topBox"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ AJUSTES ============ -->
+        <section class="view" id="view-ajustes">
+          <div class="grid grid-1-1">
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Configuración activa</h3></div>
+              <div id="settingsBox"></div>
+            </div>
+            <div class="card">
+              <div class="card-head"><h3 class="card-title">Calidad de datos</h3></div>
+              <div id="dataQualityBox"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3 class="card-title">Actualización automática</h3></div>
+            <div id="autoInfoBox"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal de detalle -->
+  <div class="modal-backdrop" id="modal" role="dialog" aria-modal="true">
+    <div class="modal" id="modalContent"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <?!= include('Components'); ?>
+  <?!= include('Charts'); ?>
+  <?!= include('JavaScript'); ?>
+</body>
+</html>

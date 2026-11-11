@@ -1,0 +1,179 @@
+<script>
+/* =========================================================
+   Charts.html
+   Envoltorios de Chart.js. Los gráficos se crean una vez y luego
+   solo se actualizan sus datos (no se destruyen en cada filtro).
+   ========================================================= */
+
+const Charts = (function () {
+  const instances = {};
+
+  function css(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function money(v) { return UI.money(v); }
+
+  function baseOptions() {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 450 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, padding: 16, color: css('--muted'), font: { family: 'Inter', size: 12 } }
+        },
+        tooltip: {
+          backgroundColor: css('--text'), titleColor: css('--surface'), bodyColor: css('--surface'),
+          padding: 10, cornerRadius: 8, titleFont: { family: 'Inter', weight: '600' }, bodyFont: { family: 'Inter' },
+          callbacks: { label: function (c) { return ' ' + c.dataset.label + ': ' + money(c.parsed.y !== undefined ? c.parsed.y : c.parsed); } }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: css('--muted'), font: { family: 'Inter', size: 11 }, maxRotation: 0, autoSkipPadding: 10 }, border: { display: false } },
+        y: {
+          grid: { color: css('--border') }, border: { display: false },
+          ticks: { color: css('--muted'), font: { family: 'Inter', size: 11 }, callback: function (v) { return 'S/ ' + Number(v).toLocaleString('es-PE'); } }
+        }
+      }
+    };
+  }
+
+  /** Crea el gráfico o actualiza sus datos si ya existe. */
+  function upsert(id, config) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return;
+    const existing = instances[id];
+    if (existing && existing.canvas !== canvas) { existing.destroy(); delete instances[id]; }
+    const current = instances[id];
+    if (current && current.config.type === config.type) {
+      const existing = current;
+      existing.data.labels = config.data.labels;
+      config.data.datasets.forEach(function (ds, i) {
+        if (existing.data.datasets[i]) Object.assign(existing.data.datasets[i], ds);
+        else existing.data.datasets.push(ds);
+      });
+      existing.data.datasets.length = config.data.datasets.length;
+      if (config.options && config.options.indexAxis) existing.options.indexAxis = config.options.indexAxis;
+      existing.update();
+      return;
+    }
+    if (current) current.destroy();
+    instances[id] = new Chart(canvas, config);
+  }
+
+  /** Evolución mensual: barras de ingresos/gastos + línea de ahorro (flujo neto). */
+  function evolution(id, monthly) {
+    const opts = baseOptions();
+    upsert(id, {
+      type: 'bar',
+      data: {
+        labels: monthly.map(function (m) { return m.label; }),
+        datasets: [
+          { type: 'line', label: 'Ahorro', data: monthly.map(function (m) { return m.net; }), borderColor: css('--net'),
+            backgroundColor: css('--net'), borderWidth: 2.5, tension: .35, pointRadius: 3, pointHoverRadius: 5, order: 0 },
+          { type: 'bar', label: 'Ingresos', data: monthly.map(function (m) { return m.income; }), backgroundColor: css('--income'),
+            borderRadius: 5, maxBarThickness: 18, order: 1 },
+          { type: 'bar', label: 'Gastos', data: monthly.map(function (m) { return m.expenses; }), backgroundColor: css('--expense'),
+            borderRadius: 5, maxBarThickness: 18, order: 1 }
+        ]
+      },
+      options: opts
+    });
+  }
+
+  function doughnut(id, items) {
+    const opts = baseOptions();
+    delete opts.scales;
+    opts.cutout = '70%';
+    opts.plugins.legend = { display: false };
+    opts.interaction = { mode: 'nearest', intersect: true };
+    opts.plugins.tooltip.callbacks = {
+      label: function (c) { return ' ' + c.label + ': ' + money(c.parsed); }
+    };
+    upsert(id, {
+      type: 'doughnut',
+      data: {
+        labels: items.map(function (i) { return i.name; }),
+        datasets: [{ label: 'Gasto', data: items.map(function (i) { return i.total; }),
+          backgroundColor: items.map(function (i) { return i.color; }), borderWidth: 2, borderColor: css('--surface'), hoverOffset: 6 }]
+      },
+      options: opts
+    });
+  }
+
+  /** Barras horizontales: periodo actual vs. anterior por grupo. */
+  function groups(id, list, prevLabel) {
+    const opts = baseOptions();
+    opts.indexAxis = 'y';
+    opts.scales.x.grid = { color: css('--border') };
+    opts.scales.x.ticks.callback = function (v) { return 'S/ ' + Number(v).toLocaleString('es-PE'); };
+    opts.scales.y = { grid: { display: false }, border: { display: false }, ticks: { color: css('--text'), font: { family: 'Inter', size: 12 } } };
+    opts.plugins.tooltip.callbacks.label = function (c) { return ' ' + c.dataset.label + ': ' + money(c.parsed.x); };
+    upsert(id, {
+      type: 'bar',
+      data: {
+        labels: list.map(function (g) { return g.name; }),
+        datasets: [
+          { label: 'Periodo actual', data: list.map(function (g) { return g.total; }),
+            backgroundColor: list.map(function (g) { return UI.colorFor(g.name); }), borderRadius: 5, maxBarThickness: 16 },
+          { label: prevLabel || 'Periodo anterior', data: list.map(function (g) { return g.prev; }),
+            backgroundColor: css('--border'), borderRadius: 5, maxBarThickness: 16 }
+        ]
+      },
+      options: opts
+    });
+  }
+
+  function budget(id, groupsList) {
+    const opts = baseOptions();
+    opts.indexAxis = 'y';
+    opts.scales.x.grid = { color: css('--border') };
+    opts.scales.x.ticks.callback = function (v) { return 'S/ ' + Number(v).toLocaleString('es-PE'); };
+    opts.scales.y = { grid: { display: false }, border: { display: false }, ticks: { color: css('--text'), font: { family: 'Inter', size: 12 } } };
+    opts.plugins.tooltip.callbacks.label = function (c) { return ' ' + c.dataset.label + ': ' + money(c.parsed.x); };
+    const statusColor = { ok: css('--success'), advertencia: css('--warning'), excedido: css('--danger') };
+    upsert(id, {
+      type: 'bar',
+      data: {
+        labels: groupsList.map(function (g) { return g.grupo; }),
+        datasets: [
+          { label: 'Gastado', data: groupsList.map(function (g) { return g.gastado; }),
+            backgroundColor: groupsList.map(function (g) { return statusColor[g.estado]; }), borderRadius: 5, maxBarThickness: 14 },
+          { label: 'Presupuesto', data: groupsList.map(function (g) { return g.presupuesto; }),
+            backgroundColor: css('--border'), borderRadius: 5, maxBarThickness: 14 }
+        ]
+      },
+      options: opts
+    });
+  }
+
+  function balance(id, history) {
+    const opts = baseOptions();
+    upsert(id, {
+      type: 'line',
+      data: {
+        labels: history.map(function (h) { return h.label; }),
+        datasets: [
+          { label: 'Total disponible', data: history.map(function (h) { return h.disponible; }), borderColor: css('--primary'),
+            backgroundColor: css('--primary') + '22', fill: true, tension: .35, borderWidth: 2.5, pointRadius: 3 },
+          { label: 'Banco', data: history.map(function (h) { return h.banco; }), borderColor: '#6366f1',
+            tension: .35, borderWidth: 2, pointRadius: 2, borderDash: [] },
+          { label: 'Efectivo', data: history.map(function (h) { return h.efectivo; }), borderColor: '#f59e0b',
+            tension: .35, borderWidth: 2, pointRadius: 2 }
+        ]
+      },
+      options: opts
+    });
+  }
+
+  /** Ajusta tamaños tras cambiar de vista (Chart.js no mide canvas ocultos). */
+  function resizeAll() {
+    Object.keys(instances).forEach(function (k) { instances[k].resize(); });
+  }
+
+  return { evolution: evolution, doughnut: doughnut, groups: groups, budget: budget, balance: balance, resizeAll: resizeAll };
+})();
+</script>
