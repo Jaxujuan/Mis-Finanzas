@@ -388,7 +388,7 @@ const App = (function () {
       return '<tr data-mov="' + m.id + '"><td class="num">' + m.fechaTexto + '</td>' +
         '<td>' + typeBadge(m) + '</td><td>' + UI.esc(m.categoria || '—') + '</td>' +
         '<td>' + (m.grupo ? '<span class="legend-swatch" style="display:inline-block;margin-right:6px;background:' + UI.colorFor(m.grupo) + '"></span>' + UI.esc(m.grupo)
-          : (m.tipo === 'gasto_trabajo' || m.tipo === 'reembolso') ? '<span class="muted">Trabajo (reembolsable)</span>' : '—') + '</td>' +
+          : (m.tipo === 'gasto_trabajo' || m.tipo === 'reembolso') ? '<span class="muted">Reembolsable</span>' : '—') + '</td>' +
         '<td class="desc">' + UI.esc(m.descripcion || '—') + '</td><td>' + UI.esc(m.medio) + '</td>' +
         '<td class="right num ' + cls + '" style="font-weight:600">' + sign + UI.money(m.monto) + '</td></tr>';
     }).join('');
@@ -531,7 +531,7 @@ const App = (function () {
     $('balanceKpis').innerHTML = [
       UI.kpiCard({ label: 'Banco', color: '#6366f1', value: UI.money(c.banco), valueCls: c.banco < 0 ? 'text-danger' : '', foot: 'Incluye Yape / Plin' }),
       UI.kpiCard({ label: 'Efectivo', color: '#f59e0b', value: UI.money(c.efectivo), valueCls: c.efectivo < 0 ? 'text-danger' : '', foot: 'Dinero en mano' }),
-      UI.kpiCard({ label: 'Por cobrar al trabajo', color: 'var(--info)', value: UI.money(c.porCobrar), foot: 'Gastos del trabajo − reembolsos' }),
+      UI.kpiCard({ label: 'Por cobrar', color: 'var(--info)', value: UI.money(c.porCobrar), foot: 'Gastos reembolsables − reembolsos' }),
       UI.kpiCard({ cls: 'highlight', label: 'Patrimonio neto', value: UI.money(c.patrimonio), foot: 'Activos − pasivos' })
     ].join('');
 
