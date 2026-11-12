@@ -275,7 +275,7 @@ const Views = (function () {
       '<div class="card"><div class="card-head"><h3 class="card-title">Evolución</h3><span class="card-sub">Saldo al cierre de cada mes</span></div>' +
       (d.balances.history.length ? '<div class="chart-box tall"><canvas id="chartBalance"></canvas></div>' : UI.empty('📉', 'Sin historial', '')) + '</div>' +
       '<div class="card"><div class="card-head"><h3 class="card-title">Patrimonio</h3></div>' +
-      stat('Banco', c.banco) + stat('Efectivo', c.efectivo) + stat('Por cobrar al trabajo', Math.max(0, c.porCobrar)) +
+      stat('Banco', c.banco) + stat('Efectivo', c.efectivo) + stat('Por cobrar', Math.max(0, c.porCobrar)) +
       stat('Tarjeta de crédito', -c.pasivos) + stat('Patrimonio neto', c.patrimonio, 'total') + '</div>';
   }
 

@@ -841,7 +841,7 @@ function buildAlerts_(r, ctx) {
   }
   if (r.balances.current.porCobrar > 0) {
     alerts.push({ level: 'info', view: 'saldos', title: 'Reembolsos pendientes',
-      detail: 'El trabajo te debe ' + money_(r.balances.current.porCobrar) + '.' });
+      detail: 'Te deben ' + money_(r.balances.current.porCobrar) + ' de gastos reembolsables.' });
   }
   ctx.dataset.warnings.forEach(function (w) {
     alerts.push({ level: 'info', view: 'ajustes', title: 'Revisar datos', detail: w });

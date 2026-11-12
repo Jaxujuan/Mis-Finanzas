@@ -179,13 +179,14 @@ const Entry = (function () {
     if (n.indexOf('ingreso') >= 0) return 'ingreso';
     if (n.indexOf('retiro') >= 0) return 'retiro';
     if (n.indexOf('deposito') >= 0) return 'deposito';
+    if (n.indexOf('reembolsable') >= 0 || n.indexOf('trabajo') >= 0) return 'gasto_trabajo';
     if (n.indexOf('reembolso') >= 0) return 'reembolso';
-    if (n.indexOf('trabajo') >= 0) return 'gasto_trabajo';
     return 'gasto';
   }
   function catsFor(kind) {
     const o = st.options;
     if (kind === 'ingreso') return o.categoriasIngreso;
+    if (kind === 'reembolso') return o.categoriasIngreso.concat(o.categoriasGasto);
     if (kind === 'retiro' || kind === 'deposito') return o.categoriasInternas.length ? o.categoriasInternas : o.categoriasGasto;
     return o.categoriasGasto;
   }

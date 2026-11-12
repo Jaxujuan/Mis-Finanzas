@@ -142,8 +142,8 @@ const MOVEMENT_TYPES = {
   gasto: { label: 'Gasto' },
   retiro: { label: 'Retiro de efectivo' },
   deposito: { label: 'Depósito a banco' },
-  gasto_trabajo: { label: 'Gasto del trabajo' },
-  reembolso: { label: 'Reembolso del trabajo' },
+  gasto_trabajo: { label: 'Gasto reembolsable' },
+  reembolso: { label: 'Reembolso' },
   interno: { label: 'Movimiento interno' }
 };
 

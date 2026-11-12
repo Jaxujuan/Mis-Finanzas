@@ -54,8 +54,9 @@ const Parser = (function () {
   const KEYWORDS = [
     [['Reuniones'], ['cuota', 'almuerzo familiar', 'cena del trabajo', 'cena de trabajo', 'cena trabajo', 'reunion', 'junta', 'pollada', 'parrillada', 'vaca', 'chancha', 'cumpleanos de']],
     [['Regalos'], ['regalo', 'regalos', 'obsequio', 'presente para']],
+    [['Viajes'], ['viaje', 'viajes', 'hotel', 'hospedaje', 'hostal', 'airbnb', 'vuelo', 'pasaje aereo', 'boleto de avion', 'latam', 'jetsmart', 'sky airline', 'tour', 'excursion']],
     [['Comida', 'Alimentacion', 'Alimentos'], ['comida', 'almuerzo', 'almorce', 'menu', 'cena', 'cene', 'desayuno', 'lonche', 'restaurante', 'chifa', 'pollo', 'polleria', 'broaster', 'ceviche', 'cevicheria', 'hamburguesa', 'pizza', 'delivery', 'rappi', 'pedidosya', 'mercado', 'supermercado', 'plaza vea', 'tottus', 'metro', 'wong', 'vivanda', 'makro', 'mass', 'bodega', 'pan', 'panaderia', 'verduras', 'frutas', 'abarrotes', 'comi', 'sanguche', 'anticucho']],
-    [['Snacks', 'Tambo'], ['snack', 'snacks', 'chocolate', 'galleta', 'galletas', 'gaseosa', 'helado', 'golosina', 'dulce', 'papitas', 'tambo', 'oxxo', 'cafe', 'starbucks', 'chifles', 'piqueo']],
+    [['Snacks', 'Tambo'], ['snack', 'snacks', 'chocolate', 'galleta', 'galletas', 'gaseosa', 'helado', 'golosina', 'dulce', 'papitas', 'tambo', 'oxxo', 'cafe', 'starbucks', 'chifles', 'piqueo', 'mcflurry', 'camote frito', 'canchita']],
     [['Pasajes', 'Transporte', 'Movilidad'], ['taxi', 'uber', 'didi', 'cabify', 'indrive', 'indriver', 'combi', 'bus', 'micro', 'metropolitano', 'corredor', 'colectivo', 'pasaje', 'pasajes', 'tren', 'linea 1', 'mototaxi', 'peaje']],
     [['Gasolina', 'Combustible'], ['gasolina', 'grifo', 'combustible', 'petroleo', 'diesel', 'glp', 'primax', 'repsol', 'pecsa', 'tanqueada', 'tanque']],
     [['Lavado'], ['lavado', 'carwash', 'car wash', 'lavar el carro', 'lavada']],
@@ -82,8 +83,8 @@ const Parser = (function () {
 
   // Palabras que indican el tipo de movimiento → tipo interno.
   const TYPE_HINTS = [
-    ['reembolso', ['me reembolsaron', 'reembolsaron', 'me devolvieron del trabajo', 'reembolso del trabajo', 'me pagaron el reembolso']],
-    ['gasto_trabajo', ['reembolsable', 'me reembolsan', 'me lo reembolsan', 'me lo devuelven', 'me lo van a devolver', 'gasto del trabajo', 'gasto de trabajo', 'a cuenta del trabajo', 'por cuenta del trabajo', 'lo paga el trabajo']],
+    ['reembolso', ['me reembolsaron', 'reembolsaron', 'me devolvieron', 'me lo devolvieron', 'reembolso del trabajo', 'me pagaron el reembolso', 'reembolso']],
+    ['gasto_trabajo', ['reembolsable', 'me reembolsan', 'me lo reembolsan', 'me lo devuelven', 'me lo van a devolver', 'gasto del trabajo', 'gasto de trabajo', 'a cuenta del trabajo', 'por cuenta del trabajo', 'lo paga el trabajo', 'me lo van a pagar', 'me lo pagan']],
     ['retiro', ['saque', 'retire', 'cajero', 'retiro']],
     ['deposito', ['deposite', 'deposito a', 'meti plata', 'deposito en']],
     ['ingreso', ['me pagaron', 'me depositaron', 'cobre', 'recibi', 'me yapearon', 'me plinearon', 'gane', 'ingreso', 'sueldo', 'quincena', 'salario', 'vendi', 'me transfirieron']]
@@ -273,6 +274,10 @@ const Parser = (function () {
     const best = pickCategory(tokens, cats, ctx.learned);
     let categoria = best ? best.name : '';
     if (!categoria && (kind === 'retiro' || kind === 'deposito') && cats.length) categoria = cats[0].name;
+    if (!categoria && kind === 'reembolso' && cats.length) {
+      const extra = cats.filter(function (c) { return /extra|otro/i.test(c.name); })[0];
+      categoria = (extra || cats[cats.length - 1]).name;
+    }
     const catEntry = cats.filter(function (c) { return c.name === categoria; })[0];
 
     // Medio final
@@ -322,7 +327,7 @@ const Parser = (function () {
 
   /* ---------------- Categorías ---------------- */
   function categoriesFor(kind, o) {
-    if (kind === 'ingreso') return o.categoriasIngreso;
+    if (kind === 'ingreso' || kind === 'reembolso') return o.categoriasIngreso;
     if (kind === 'retiro' || kind === 'deposito') return o.categoriasInternas.length ? o.categoriasInternas : o.categoriasGasto;
     return o.categoriasGasto;
   }

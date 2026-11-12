@@ -153,6 +153,112 @@ function agregarPreguntasOpcionales() {
   invalidateCache();
 }
 
+/**
+ * Ejecutar UNA vez: agrega la categoría "Viajes" (grupo Viajes, tipo Gasto) a la hoja Categorias
+ * y al Form, y renombra los tipos "Gasto del trabajo" → "Gasto reembolsable" y
+ * "Reembolso del trabajo" → "Reembolso" (sirven para trabajo, familia o amigos).
+ * Las filas antiguas siguen funcionando: el sistema reconoce ambos nombres.
+ */
+function configurarViajesYReembolsos() {
+  agregarCategoria_('Viajes', 'Viajes', 'Gasto');
+  renombrarOpcionesTipo_({
+    'gasto del trabajo': 'Gasto reembolsable',
+    'reembolso del trabajo': 'Reembolso'
+  });
+  invalidateCache();
+  CacheService.getScriptCache().remove(cacheKey_('options', null));
+}
+
+/** Agrega una categoría a la hoja Categorias y como opción en la pregunta de categoría del Form. */
+function agregarCategoria_(nombre, grupo, tipo) {
+  const ss = getSpreadsheet_();
+  const sh = findSheet_(ss, CONFIG.SHEETS.CATEGORIAS);
+  if (!sh) throw new AppError('No encontré la hoja Categorias.');
+  const values = sh.getDataRange().getValues();
+  let hr = -1, cc = -1;
+  for (let r = 0; r < Math.min(values.length, 10) && hr < 0; r++) {
+    for (let c = 0; c < values[r].length; c++) {
+      if (normalizeText(values[r][c]) === 'categoria') { hr = r; cc = c; break; }
+    }
+  }
+  if (hr < 0) throw new AppError('No encontré el encabezado "Categoria" en la hoja Categorias.');
+  const head = values[hr].map(normalizeText);
+  const gc = head.indexOf('grupo'), tc = head.indexOf('tipo');
+  let last = hr, exists = false;
+  for (let r = hr + 1; r < values.length; r++) {
+    const v = String(values[r][cc] || '').trim();
+    if (!v) continue;
+    last = r;
+    if (normalizeText(v) === normalizeText(nombre)) exists = true;
+  }
+  if (exists) {
+    console.log('La categoría "' + nombre + '" ya estaba en la hoja Categorias.');
+  } else {
+    const row = last + 2; // 1-based, fila siguiente a la última con datos
+    sh.getRange(row, cc + 1).setValue(nombre);
+    if (gc >= 0) sh.getRange(row, gc + 1).setValue(grupo);
+    if (tc >= 0) sh.getRange(row, tc + 1).setValue(tipo);
+    console.log('Categoría "' + nombre + '" (grupo ' + grupo + ', ' + tipo + ') agregada en la fila ' + row + ' de Categorias.');
+  }
+
+  const form = getLinkedForm_();
+  const item = findFormItems_(form).categoria;
+  if (!item) throw new AppError('No encontré la pregunta de categoría en tu Form.');
+  const current = itemChoices_(item);
+  if (current.some(function (c) { return normalizeText(c) === normalizeText(nombre); })) {
+    console.log('El Form ya tenía la opción "' + nombre + '".');
+    return;
+  }
+  editChoices_(item, function (list, make) { return list.concat([make(nombre, null)]); });
+  console.log('Opción "' + nombre + '" agregada a la pregunta de categoría del Form.');
+}
+
+/** Renombra opciones de la pregunta "Tipo" del Form conservando a qué sección lleva cada una. */
+function renombrarOpcionesTipo_(map) {
+  const form = getLinkedForm_();
+  const item = findFormItems_(form).tipo;
+  if (!item) throw new AppError('No encontré la pregunta de tipo en tu Form.');
+  let changed = 0;
+  editChoices_(item, function (list, make) {
+    return list.map(function (ch) {
+      const nuevo = map[normalizeText(ch.getValue())];
+      if (!nuevo) return ch;
+      changed++;
+      console.log('Tipo "' + ch.getValue() + '" → "' + nuevo + '"');
+      return make(nuevo, ch);
+    });
+  });
+  if (!changed) console.log('No había tipos por renombrar.');
+}
+
+/**
+ * Reescribe las opciones de una pregunta de selección. fn(lista, make) devuelve la nueva lista;
+ * make(valor, choiceOriginal) crea una opción copiando la navegación de la original.
+ */
+function editChoices_(item, fn) {
+  const t = item.getType();
+  let q;
+  if (t === FormApp.ItemType.MULTIPLE_CHOICE) q = item.asMultipleChoiceItem();
+  else if (t === FormApp.ItemType.LIST) q = item.asListItem();
+  else if (t === FormApp.ItemType.CHECKBOX) q = item.asCheckboxItem();
+  else throw new AppError('La pregunta "' + item.getTitle() + '" no es de opciones.');
+  const canNav = t !== FormApp.ItemType.CHECKBOX;
+  const make = function (value, orig) {
+    if (canNav && orig) {
+      const page = orig.getGotoPage();
+      if (page) return q.createChoice(value, page);
+      const nav = orig.getPageNavigationType();
+      if (nav && nav !== FormApp.PageNavigationType.CONTINUE) return q.createChoice(value, nav);
+    }
+    return q.createChoice(value);
+  };
+  const original = q.getChoices();
+  const next = fn(original.slice(), make).map(function (c) {
+    return original.indexOf(c) >= 0 ? make(c.getValue(), c) : c;
+  });
+  q.setChoices(next);
+}
+
 /** Prueba la API desde el editor (usa la clave guardada; no la muestra). */
 function probarApi() {
   const key = getSecret_('APP_KEY');
@@ -490,7 +596,7 @@ function buildParserPrompt_(opts, todayIso, weekday, provider) {
     '- "Efectivo", "cash", "sencillo" = medio en efectivo. Si no se menciona el medio, deja medio vacío. Si se menciona un solo medio para varios gastos, aplícalo a todos.',
     '- Montos: "25 soles", "s/ 25", "veinticinco" → 25; "veinte con cincuenta" → 20.50. "Luca" = 1 sol. Si no hay monto claro, monto 0.',
     '- Sacar plata del cajero = retiro de efectivo. Depositar efectivo en la cuenta = depósito a banco.',
-    '- Solo es gasto del trabajo si el usuario dice que se lo reembolsarán. Cuotas para cenas o reuniones del trabajo son gastos personales.',
+    '- Solo es gasto reembolsable si el usuario dice que se lo devolverán (trabajo, familia, amigos). Cuotas para cenas o reuniones son gastos personales.',
     '- Fechas relativas ("ayer", "el lunes") se convierten a YYYY-MM-DD; si no se dice, usa la fecha de hoy. Nunca uses fechas futuras.',
     '- descripcion: el lugar o detalle breve (ej. "Plaza Vea", "almuerzo con equipo"), máximo 60 caracteres, sin repetir la categoría.',
     '- No inventes movimientos que el usuario no dijo.'
@@ -544,6 +650,8 @@ function matchOption_(value, options) {
 
 function categoriesFor_(kind, opts) {
   if (kind === 'ingreso') return opts.categoriasIngreso;
+  // Un reembolso se suele anotar como ingreso (p. ej. "Ingreso Extra") o con la categoría del gasto original.
+  if (kind === 'reembolso') return opts.categoriasIngreso.concat(opts.categoriasGasto);
   if (kind === 'retiro' || kind === 'deposito' || kind === 'interno') {
     return opts.categoriasInternas.length ? opts.categoriasInternas : opts.categoriasGasto;
   }
