@@ -1,6 +1,6 @@
 /* Service worker: guarda la "cáscara" de la app para que abra al instante y sin conexión.
    Los datos financieros NO se guardan aquí (van por POST a Apps Script). */
-const VERSION = 'mf-v1.3.1';
+const VERSION = 'mf-v1.3.2';
 const SHELL = ['./', 'index.html', 'app.css', 'manifest.webmanifest', 'js/ui.js', 'js/api.js', 'js/charts.js', 'js/views.js', 'js/parser.js', 'js/entry.js', 'js/app.js',
   'icons/icon-192.png', 'icons/icon-512.png'];
 

@@ -73,7 +73,7 @@ const Parser = (function () {
     [['Juegos'], ['juego', 'juegos', 'steam', 'playstation', 'ps5', 'xbox', 'nintendo', 'videojuego']],
     [['Cine'], ['cine', 'cineplanet', 'cinemark', 'pelicula', 'canchita']],
     [['Ocio'], ['salida', 'bowling', 'karaoke', 'discoteca', 'bar', 'tragos', 'cerveza', 'chela', 'chelas', 'fiesta', 'paseo', 'concierto', 'entradas']],
-    [['Ropa'], ['ropa', 'polo', 'zapatillas', 'zapatos', 'pantalon', 'casaca', 'camisa', 'short', 'medias', 'saga', 'ripley', 'oechsle', 'zara']],
+    [['Ropa'], ['ropa', 'polo', 'zapatillas', 'zapatos', 'pantalon', 'casaca', 'camisa', 'short', 'medias', 'saga', 'ripley', 'oechsle', 'zara', 'lavanderia', 'tintoreria', 'lavado de ropa', 'lavado en seco', 'terno', 'costurera', 'arreglo de ropa']],
     [['Aseo'], ['aseo', 'shampoo', 'champu', 'jabon', 'pasta dental', 'desodorante', 'papel higienico', 'detergente', 'limpieza', 'inkafarma', 'mifarma', 'farmacia']],
     [['Barbero'], ['barbero', 'barberia', 'peluqueria', 'corte de pelo', 'corte']],
     [['Imprevistos'], ['imprevisto', 'emergencia', 'multa', 'papeleta', 'urgencia']],
