@@ -160,6 +160,11 @@ const Parser = (function () {
     t = t.replace(new RegExp('\\b(?:el )?(\\d{1,2}) de (' + MONTHS.join('|') + ')\\b'), function (m, d, mo) {
       return set(buildDate(today, +d, MONTHS.indexOf(mo) + 1));
     });
+    // Día en palabras: "el primero de noviembre", "el quince de octubre", "el veintiuno de mayo"
+    t = t.replace(new RegExp('\\b(?:el )?(primero|[a-z]+(?: y [a-z]+)?) de (' + MONTHS.join('|') + ')\\b'), function (m, w, mo) {
+      const n = w === 'primero' ? 1 : (wordsNumber(w.split(' '), 0) || {}).value;
+      return n >= 1 && n <= 31 ? set(buildDate(today, n, MONTHS.indexOf(mo) + 1)) : m;
+    });
     t = t.replace(new RegExp('\\b(?:el )?(?:pasado )?(' + DAYS.join('|') + ')(?: pasado)?\\b'), function (m, day) {
       let diff = (today.getDay() - DAYS.indexOf(day) + 7) % 7;
       if (diff === 0) diff = 7;
@@ -314,7 +319,7 @@ const Parser = (function () {
     const keep = raw.filter(function (x) {
       if (usedNorm[x.n]) { usedNorm[x.n]--; return false; }
       if (/^(s\/)?\d/.test(x.n)) return false;
-      if (/^(antes|ayer|anteayer|antier|hoy|hace|dias?|pasado)$/.test(x.n) || DAYS.indexOf(x.n) >= 0 || MONTHS.indexOf(x.n) >= 0) return false;
+      if (/^(antes|ayer|anteayer|antier|hoy|hace|dias?|pasado|primero)$/.test(x.n) || DAYS.indexOf(x.n) >= 0 || MONTHS.indexOf(x.n) >= 0) return false;
       if (isNumWord(x.n)) return false;
       return true;
     });
